@@ -227,12 +227,16 @@ func (d *differ) compareNodes(oldNode, newNode *html.Node, parentAnchor string) 
 		return append(patches, d.generatePatch(newNode, findAnchor(oldNode), Replace))
 	}
 
-	// Check for `live-update` modifiers.
+	// Check for `live-update` modifiers. Save and restore so the modifier
+	// doesn't leak into sibling subtrees.
+	savedNode, savedModifier := d.updateNode, d.updateModifier
 	d.liveUpdateCheck(newNode)
 
 	// If nodes at this position are not equal patch a replacement.
 	if !nodeEqual(oldNode, newNode) {
-		return append(patches, d.generatePatch(newNode, parentAnchor, Replace))
+		patches = append(patches, d.generatePatch(newNode, parentAnchor, Replace))
+		d.updateNode, d.updateModifier = savedNode, savedModifier
+		return patches
 	}
 
 	newChildren := generateNodeList(newNode.FirstChild)
@@ -248,6 +252,7 @@ func (d *differ) compareNodes(oldNode, newNode *html.Node, parentAnchor string) 
 		}
 	}
 
+	d.updateNode, d.updateModifier = savedNode, savedModifier
 	return patches
 }
 
