@@ -489,14 +489,17 @@ func (e *Engine) get(ctx context.Context, w http.ResponseWriter, r *http.Request
 
 // serveWS serve a websocket request to the handler.
 func (e *Engine) serveWS(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	opts := e.acceptOptions
 	if strings.Contains(r.UserAgent(), "Safari") {
-		if e.acceptOptions == nil {
-			e.acceptOptions = &websocket.AcceptOptions{}
+		var local websocket.AcceptOptions
+		if opts != nil {
+			local = *opts
 		}
-		e.acceptOptions.CompressionMode = websocket.CompressionDisabled
+		local.CompressionMode = websocket.CompressionDisabled
+		opts = &local
 	}
 
-	c, err := websocket.Accept(w, r, e.acceptOptions)
+	c, err := websocket.Accept(w, r, opts)
 	if err != nil {
 		e.Handler.ErrorHandler(ctx, err)
 		return
