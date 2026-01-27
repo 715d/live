@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -34,6 +35,7 @@ type Socket struct {
 	engine        *Engine
 	connected     bool
 	currentRender *html.Node
+	renderMu      sync.Mutex
 	msgs          chan Event
 	closeSlow     func()
 
@@ -41,6 +43,20 @@ type Socket struct {
 	uploads       UploadContext
 
 	selfChan chan socketSelfOp
+}
+
+// Render executes the template, computes a diff against the previous render,
+// sends any patches to the client, and updates the stored render tree.
+// It is safe for concurrent use.
+func (s *Socket) Render(ctx context.Context) error {
+	s.renderMu.Lock()
+	defer s.renderMu.Unlock()
+	render, err := renderSocket(ctx, s.engine, s)
+	if err != nil {
+		return err
+	}
+	s.updateRender(render)
+	return nil
 }
 
 type socketSelfOp struct {
@@ -259,13 +275,13 @@ func (s *Socket) ClearUpload(config string, upload *Upload) {
 	}
 }
 
-// LastRender returns the last render result of this socket.
-func (s *Socket) LatestRender() *html.Node {
+// latestRender returns the last render result of this socket.
+func (s *Socket) latestRender() *html.Node {
 	return s.currentRender
 }
 
-// UpdateRender replaces the last render result of this socket.
-func (s *Socket) UpdateRender(render *html.Node) {
+// updateRender replaces the last render result of this socket.
+func (s *Socket) updateRender(render *html.Node) {
 	s.currentRender = render
 }
 
