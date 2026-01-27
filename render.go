@@ -17,8 +17,8 @@ type RenderContext struct {
 	Assigns any
 }
 
-// RenderSocket takes the engine and current socket and renders it to html.
-func RenderSocket(ctx context.Context, e *Engine, s *Socket) (*html.Node, error) {
+// renderSocket takes the engine and current socket and renders it to html.
+func renderSocket(ctx context.Context, e *Engine, s *Socket) (*html.Node, error) {
 	rc := &RenderContext{
 		Socket:  s,
 		Uploads: s.Uploads(),
@@ -35,8 +35,8 @@ func RenderSocket(ctx context.Context, e *Engine, s *Socket) (*html.Node, error)
 	}
 	shapeTree(render)
 
-	if s.LatestRender() != nil {
-		patches, err := Diff(s.LatestRender(), render)
+	if s.latestRender() != nil {
+		patches, err := Diff(s.latestRender(), render)
 		if err != nil {
 			return nil, fmt.Errorf("diff error: %w", err)
 		}
