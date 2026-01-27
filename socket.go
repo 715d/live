@@ -39,6 +39,7 @@ type Socket struct {
 	msgs          chan Event
 	closeSlow     func()
 
+	uploadMu      sync.Mutex
 	uploadConfigs []*UploadConfig
 	uploads       UploadContext
 
@@ -224,21 +225,37 @@ func (s *Socket) Redirect(u *url.URL) {
 
 // AllowUploads indicates that his socket should accept uploads.
 func (s *Socket) AllowUploads(config *UploadConfig) {
+	s.uploadMu.Lock()
+	defer s.uploadMu.Unlock()
 	s.uploadConfigs = append(s.uploadConfigs, config)
 }
 
 // UploadConfigs returns the configs for this socket.
 func (s *Socket) UploadConfigs() []*UploadConfig {
-	return s.uploadConfigs
+	s.uploadMu.Lock()
+	defer s.uploadMu.Unlock()
+	out := make([]*UploadConfig, len(s.uploadConfigs))
+	copy(out, s.uploadConfigs)
+	return out
 }
 
 // Uploads returns the sockets uploads.
 func (s *Socket) Uploads() UploadContext {
-	return s.uploads
+	s.uploadMu.Lock()
+	defer s.uploadMu.Unlock()
+	out := make(UploadContext, len(s.uploads))
+	for k, v := range s.uploads {
+		cp := make([]*Upload, len(v))
+		copy(cp, v)
+		out[k] = cp
+	}
+	return out
 }
 
 // AssignUpload sets uploads to this socket.
 func (s *Socket) AssignUpload(config string, upload *Upload) {
+	s.uploadMu.Lock()
+	defer s.uploadMu.Unlock()
 	if s.uploads == nil {
 		s.uploads = map[string][]*Upload{}
 	}
@@ -256,13 +273,17 @@ func (s *Socket) AssignUpload(config string, upload *Upload) {
 
 // ClearUploads clears this sockets upload map.
 func (s *Socket) ClearUploads() {
+	s.uploadMu.Lock()
+	defer s.uploadMu.Unlock()
 	s.uploads = map[string][]*Upload{}
 }
 
 // ClearUpload clears a specific upload from this socket.
 func (s *Socket) ClearUpload(config string, upload *Upload) {
+	s.uploadMu.Lock()
+	defer s.uploadMu.Unlock()
 	if s.uploads == nil {
-		s.uploads = map[string][]*Upload{}
+		return
 	}
 	if _, ok := s.uploads[config]; !ok {
 		return
