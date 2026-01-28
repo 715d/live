@@ -1,5 +1,5 @@
 import { Patch } from "./patch";
-import { LiveEvent } from "./event";
+import { LiveEvent, EventDispatch } from "./event";
 
 test("simple replace", () => {
     document.body.innerHTML = `<div _l0="">Hello</div>`;
@@ -61,4 +61,31 @@ test("head update", () => {
     Patch.handle(p);
 
     expect(document.head.innerHTML).toEqual(`<title _l0="">2</title>`);
+});
+
+test("REPLACE patch passes element that is still in the DOM to updated()", () => {
+    const anchor = "_ltest99";
+
+    document.body.innerHTML = `<div ${anchor}="">Hello</div>`;
+
+    let capturedElement: Element | null = null;
+    const originalUpdated = EventDispatch.updated;
+    EventDispatch.updated = function(element: Element) {
+        capturedElement = element;
+        originalUpdated.call(EventDispatch, element);
+    };
+
+    Patch.handle(new LiveEvent("patch", [
+        {
+            Anchor: anchor,
+            Action: 1,
+            HTML: `<div ${anchor}="">World</div>`,
+        },
+    ]));
+
+    EventDispatch.updated = originalUpdated;
+
+    expect(capturedElement).not.toBeNull();
+    expect(capturedElement!.textContent).toBe("World");
+    expect(document.contains(capturedElement)).toBe(true);
 });

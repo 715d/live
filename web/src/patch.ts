@@ -33,14 +33,12 @@ export class Patch {
             case 1: // REPLACE
                 if (e.HTML === "") {
                     EventDispatch.beforeDestroy(target);
-                } else {
-                    EventDispatch.beforeUpdate(target, newElement as Element);
-                }
-                target.outerHTML = e.HTML;
-                if (e.HTML === "") {
+                    target.remove();
                     EventDispatch.destroyed(target);
                 } else {
-                    EventDispatch.updated(target);
+                    EventDispatch.beforeUpdate(target, newElement as Element);
+                    target.replaceWith(newElement);
+                    EventDispatch.updated(newElement as Element);
                 }
                 break;
             case 2: // APPEND
