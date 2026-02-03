@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"log/slog"
+	"sync"
 )
 
 // PubSubTransport is how the messages should be sent to the listeners.
@@ -19,8 +20,9 @@ type PubSubTransport interface {
 // transport this could be between handlers in an application, or across
 // nodes in a cluster.
 type PubSub struct {
-	transport PubSubTransport
-	handlers  map[string][]*Engine
+	transport  PubSubTransport
+	handlersMu sync.RWMutex
+	handlers   map[string][]*Engine
 }
 
 // NewPubSub creates a new PubSub handler.
@@ -44,7 +46,9 @@ func (p *PubSub) Publish(ctx context.Context, topic string, msg Event) error {
 
 // Subscribe adds a handler to a PubSub topic.
 func (p *PubSub) Subscribe(topic string, h *Engine) {
+	p.handlersMu.Lock()
 	p.handlers[topic] = append(p.handlers[topic], h)
+	p.handlersMu.Unlock()
 
 	// This adjusts the handlers broadcast function to publish onto the
 	// given topic.
@@ -55,9 +59,11 @@ func (p *PubSub) Subscribe(topic string, h *Engine) {
 	}
 }
 
-// Recieve a message from the transport.
-func (p *PubSub) Recieve(topic string, msg Event) {
+// Receive a message from the transport.
+func (p *PubSub) Receive(topic string, msg Event) {
 	ctx := context.Background()
+	p.handlersMu.RLock()
+	defer p.handlersMu.RUnlock()
 	for _, node := range p.handlers[topic] {
 		node.self(ctx, nil, msg)
 	}
@@ -93,7 +99,7 @@ func (l *LocalTransport) Listen(ctx context.Context, p *PubSub) error {
 	for {
 		select {
 		case msg := <-l.queue:
-			p.Recieve(msg.Topic, msg.Msg)
+			p.Receive(msg.Topic, msg.Msg)
 		case <-ctx.Done():
 			return nil
 		}
