@@ -248,6 +248,25 @@ func TestLiveUpdate(t *testing.T) {
 				{Anchor: "_l_0_1_0", Action: Noop, HTML: `<div _l_0_1_0_0="">World</div>`},
 			},
 		},
+		{
+			// "ignore" must not leak into the next sibling. The second span's
+			// child text changed, so it needs a Replace — not Noop.
+			// The ignore subtree is identical so no patch is emitted for it.
+			root:     `<div><span live-update="ignore"><p>Static</p></span><span><p>Old</p></span></div>`,
+			proposed: `<div><span live-update="ignore"><p>Static</p></span><span><p>New</p></span></div>`,
+			patches: []Patch{
+				{Anchor: "_l_0_1_0_1_0", Action: Replace, HTML: `<p _l_0_1_0_1_0="">New</p>`},
+			},
+		},
+		{
+			// "append" must not leak into the next sibling.
+			// The append subtree is identical so no patch is emitted for it.
+			root:     `<div><span live-update="append"><p>List</p></span><span><p>Old</p></span></div>`,
+			proposed: `<div><span live-update="append"><p>List</p></span><span><p>New</p></span></div>`,
+			patches: []Patch{
+				{Anchor: "_l_0_1_0_1_0", Action: Replace, HTML: `<p _l_0_1_0_1_0="">New</p>`},
+			},
+		},
 	}
 	for _, d := range tests {
 		runDiffTest(d, t)
@@ -405,6 +424,7 @@ func BenchmarkDiff(b *testing.B) {
 }
 
 func runDiffTest(tt diffTest, t *testing.T) {
+	t.Helper()
 	rootNode, err := html.Parse(strings.NewReader(tt.root))
 	if err != nil {
 		t.Error(err)
