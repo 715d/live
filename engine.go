@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -102,8 +103,7 @@ type engineDeleteSocket struct {
 }
 
 type engineIterateSockets struct {
-	resp chan *Socket
-	done chan bool
+	resp chan []*Socket
 }
 
 func (e *Engine) operate(ctx context.Context) {
@@ -124,10 +124,7 @@ func (e *Engine) operate(ctx context.Context) {
 			delete(socketMap, op.ID)
 			op.resp <- struct{}{}
 		case op := <-e.iterateSocketsC:
-			for _, s := range socketMap {
-				op.resp <- s
-			}
-			op.done <- true
+			op.resp <- slices.Collect(maps.Values(socketMap))
 		case <-ctx.Done():
 			return
 		}
@@ -176,18 +173,10 @@ func (e *Engine) Broadcast(event string, data any) error {
 func (e *Engine) self(ctx context.Context, sock *Socket, msg Event) {
 	// If the socket is nil, this is broadcast message.
 	if sock == nil {
-		op := engineIterateSockets{
-			resp: make(chan *Socket),
-			done: make(chan bool),
-		}
+		op := engineIterateSockets{resp: make(chan []*Socket, 1)}
 		e.iterateSocketsC <- op
-		for {
-			select {
-			case socket := <-op.resp:
-				e.handleEmittedEvent(ctx, socket, msg)
-			case <-op.done:
-				return
-			}
+		for _, socket := range <-op.resp {
+			e.handleEmittedEvent(ctx, socket, msg)
 		}
 	} else {
 		if err := e.hasSocket(sock); err != nil {
