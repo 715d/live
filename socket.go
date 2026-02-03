@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -34,13 +35,29 @@ type Socket struct {
 	engine        *Engine
 	connected     bool
 	currentRender *html.Node
+	renderMu      sync.Mutex
 	msgs          chan Event
 	closeSlow     func()
 
+	uploadMu      sync.Mutex
 	uploadConfigs []*UploadConfig
 	uploads       UploadContext
 
 	selfChan chan socketSelfOp
+}
+
+// Render executes the template, computes a diff against the previous render,
+// sends any patches to the client, and updates the stored render tree.
+// It is safe for concurrent use.
+func (s *Socket) Render(ctx context.Context) error {
+	s.renderMu.Lock()
+	defer s.renderMu.Unlock()
+	render, err := renderSocket(ctx, s.engine, s)
+	if err != nil {
+		return err
+	}
+	s.updateRender(render)
+	return nil
 }
 
 type socketSelfOp struct {
@@ -209,21 +226,37 @@ func (s *Socket) Redirect(u *url.URL) {
 
 // AllowUploads indicates that his socket should accept uploads.
 func (s *Socket) AllowUploads(config *UploadConfig) {
+	s.uploadMu.Lock()
+	defer s.uploadMu.Unlock()
 	s.uploadConfigs = append(s.uploadConfigs, config)
 }
 
 // UploadConfigs returns the configs for this socket.
 func (s *Socket) UploadConfigs() []*UploadConfig {
-	return s.uploadConfigs
+	s.uploadMu.Lock()
+	defer s.uploadMu.Unlock()
+	out := make([]*UploadConfig, len(s.uploadConfigs))
+	copy(out, s.uploadConfigs)
+	return out
 }
 
 // Uploads returns the sockets uploads.
 func (s *Socket) Uploads() UploadContext {
-	return s.uploads
+	s.uploadMu.Lock()
+	defer s.uploadMu.Unlock()
+	out := make(UploadContext, len(s.uploads))
+	for k, v := range s.uploads {
+		cp := make([]*Upload, len(v))
+		copy(cp, v)
+		out[k] = cp
+	}
+	return out
 }
 
 // AssignUpload sets uploads to this socket.
 func (s *Socket) AssignUpload(config string, upload *Upload) {
+	s.uploadMu.Lock()
+	defer s.uploadMu.Unlock()
 	if s.uploads == nil {
 		s.uploads = map[string][]*Upload{}
 	}
@@ -241,13 +274,17 @@ func (s *Socket) AssignUpload(config string, upload *Upload) {
 
 // ClearUploads clears this sockets upload map.
 func (s *Socket) ClearUploads() {
+	s.uploadMu.Lock()
+	defer s.uploadMu.Unlock()
 	s.uploads = map[string][]*Upload{}
 }
 
 // ClearUpload clears a specific upload from this socket.
 func (s *Socket) ClearUpload(config string, upload *Upload) {
+	s.uploadMu.Lock()
+	defer s.uploadMu.Unlock()
 	if s.uploads == nil {
-		s.uploads = map[string][]*Upload{}
+		return
 	}
 	if _, ok := s.uploads[config]; !ok {
 		return
@@ -260,13 +297,13 @@ func (s *Socket) ClearUpload(config string, upload *Upload) {
 	}
 }
 
-// LastRender returns the last render result of this socket.
-func (s *Socket) LatestRender() *html.Node {
+// latestRender returns the last render result of this socket.
+func (s *Socket) latestRender() *html.Node {
 	return s.currentRender
 }
 
-// UpdateRender replaces the last render result of this socket.
-func (s *Socket) UpdateRender(render *html.Node) {
+// updateRender replaces the last render result of this socket.
+func (s *Socket) updateRender(render *html.Node) {
 	s.currentRender = render
 }
 

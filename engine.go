@@ -190,11 +190,9 @@ func (e *Engine) handleEmittedEvent(ctx context.Context, s *Socket, msg Event) {
 	if err := e.handleSelf(ctx, msg.T, s, msg); err != nil {
 		slog.Error("server event error", "err", err)
 	}
-	render, err := RenderSocket(ctx, e, s)
-	if err != nil {
+	if err := s.Render(ctx); err != nil {
 		slog.Error("socket render error", "err", err)
 	}
-	s.UpdateRender(render)
 }
 
 // AddSocket add a socket to the engine.
@@ -364,12 +362,10 @@ func (e *Engine) post(ctx context.Context, w http.ResponseWriter, r *http.Reques
 			sock.AssignUpload(config.Name, u)
 			handleFileUpload(e, sock, config, u, uploadDir, fileHeader)
 
-			render, err := RenderSocket(ctx, e, sock)
-			if err != nil {
+			if err := sock.Render(ctx); err != nil {
 				e.Handler.ErrorHandler(ctx, err)
 				return
 			}
-			sock.UpdateRender(render)
 		}
 	}
 }
@@ -462,12 +458,12 @@ func (e *Engine) get(ctx context.Context, w http.ResponseWriter, r *http.Request
 	}
 
 	// Render the HTML to display the page.
-	render, err := RenderSocket(ctx, e, sock)
+	render, err := renderSocket(ctx, e, sock)
 	if err != nil {
 		e.Handler.ErrorHandler(ctx, err)
 		return
 	}
-	sock.UpdateRender(render)
+	sock.updateRender(render)
 
 	var rendered bytes.Buffer
 	html.Render(&rendered, render)
@@ -567,11 +563,8 @@ func (e *Engine) _serveWS(ctx context.Context, r *http.Request, c *websocket.Con
 						}
 					}
 				}
-				render, err := RenderSocket(ctx, e, sock)
-				if err != nil {
+				if err := sock.Render(ctx); err != nil {
 					internalErrors <- fmt.Errorf("socket handle error: %w", err)
-				} else {
-					sock.UpdateRender(render)
 				}
 				if err := sock.Send(EventAck, nil, WithID(m.ID)); err != nil {
 					internalErrors <- fmt.Errorf("socket send error: %w", err)
@@ -604,11 +597,9 @@ func (e *Engine) _serveWS(ctx context.Context, r *http.Request, c *websocket.Con
 	// Run render now that we are connected for the first time and we have just
 	// mounted again. This will generate and send any patches if there have
 	// been changes.
-	render, err := RenderSocket(ctx, e, sock)
-	if err != nil {
+	if err := sock.Render(ctx); err != nil {
 		return fmt.Errorf("socket render error: %w", err)
 	}
-	sock.UpdateRender(render)
 
 	// Send events to the websocket connection.
 	for {
