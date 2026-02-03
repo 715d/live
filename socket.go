@@ -89,6 +89,7 @@ func NewSocket(ctx context.Context, e *Engine, withID SocketID) *Socket {
 		id:            withID,
 		engine:        e,
 		connected:     withID != "",
+		closeSlow:     func() {},
 		uploadConfigs: []*UploadConfig{},
 		msgs:          make(chan Event, maxMessageBufferSize),
 		selfChan:      make(chan socketSelfOp),
